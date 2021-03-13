@@ -7,8 +7,48 @@
 (begin-for-syntax
 
   (provide f-equal-tac)
-  
-  (define-tactic f-equal-tac
+
+  (define-syntax (f-equal-tac syn)
+    (syntax-case syn ()
+      [(_ #:with X Y f x1 x2) #'(fill (f-equal-fn #'X #'Y #'f #'x1 #'x2))]
+      [:id #'(fill (f-equal-fn))]))
+
+  ;; args must be either:
+  ;; - null
+  ;; - length 5: X Y f x1 x2
+  (define ((f-equal-fn . args) ctxt pt)
+    (match-define (ntt-hole _ goal) pt)
+
+    (cond
+      [(null? args)
+       (syntax-parse goal
+         [(~== Y (~and fx1 ((~literal #%plain-app) f1 x1-))
+                 (~and fx2 ((~literal #%plain-app) f2 x2-)))
+          #:fail-unless (free-id=? #'f1 #'f2)
+          "tried to apply f-equal to application of different functions"
+
+          (define/syntax-parse (f _) (datum->syntax goal (unexpand #'fx1)))
+          (make-ntt-apply
+           goal
+           (list (make-ntt-hole #`(== #,(unexpand (typeof #'x1-))
+                                      #,(unexpand #'x1-)
+                                      #,(unexpand #'x2-))))
+           (λ (pf)
+             #`(f-equal #,(unexpand (typeof #'x1-))
+                        #,(unexpand #'Y)
+                        f
+                        #,(unexpand #'x1-)
+                        #,(unexpand #'x2-)
+                        #,pf)))])]
+      [else
+       (match-define (list X Y f x1 x2) args)
+       (make-ntt-apply
+        goal
+        (list (make-ntt-hole #`(== #,Y #,x1 #,x2)))
+        (λ (pf)
+          #`(f-equal #,X #,Y #,f #,x1 #,x2 #,pf)))]))
+
+ #; (define-tactic f-equal-tac
     ; (match-define (ntt-hole _ goal) pt)
     [_
      (ntac-match
